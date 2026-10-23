@@ -14,5 +14,16 @@ small { color:var(--muted); }
 .no-disponibles ul { margin:.4rem 0 0; padding-left:1.2rem; color:var(--muted); }
 .pagina-tutor { max-width:48rem; }
 .pagina-tutor textarea { resize:vertical; }
+.pagina-apoderado { max-width:48rem; }
+.selector-escolar { display:flex; flex-direction:column; gap:.25rem; margin:1rem 0; }
+.selector-escolar select { max-width:100%; }
+.escolar-panel { border:1px solid var(--borde); border-radius:8px; padding:1rem; }
+.escolar-panel h2 { font-size:1.15rem; margin:.25rem 0; }
+.historial-autorizaciones { margin-top:.75rem; }
+.historial-autorizaciones h3 { font-size:1rem; margin:.25rem 0; }
+.historial-autorizaciones table { width:100%; border-collapse:collapse; margin-top:.4rem; font-size:.9rem; }
+.historial-autorizaciones caption { text-align:left; color:var(--muted); font-size:.85rem; margin-bottom:.35rem; }
+.historial-autorizaciones th,
+.historial-autorizaciones td { text-align:left; padding:.4rem; border-bottom:1px solid var(--borde); vertical-align:top; }
 .expediente { border:1px solid var(--borde); border-radius:8px; padding:1rem; margin:1rem 0; }
 :focus-visible { outline:3px solid var(--accent); outline-offset:2px; }

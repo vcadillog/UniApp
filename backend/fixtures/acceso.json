@@ -1,10 +1,19 @@
 {
-  "_nota": "Datos SINTÉTICOS del flujo A para que los demás integren sin esperar. Clave de todos: la de SEED_PASSWORD (ver .env.example).",
+  "_nota": "Datos SINTÉTICOS del flujo A para que los demás integren sin esperar. Clave de todos: la de SEED_PASSWORD (ver .env.example). La semilla también crea el vínculo aceptado indicado en 'vinculaciones'.",
   "usuarios": [
     { "email": "escolar.prueba@example.test",   "nombre_uso": "Escolar Prueba",     "rol": "escolar" },
     { "email": "apoderado.prueba@example.test", "nombre_uso": "Apoderado Prueba",   "rol": "apoderado" },
     { "email": "tutor.prueba@uni.edu.pe",       "nombre_uso": "Tutor Prueba",       "rol": "tutor" },
     { "email": "coord.prueba@example.test",     "nombre_uso": "Coordinación Prueba","rol": "coordinador" }
+  ],
+  "vinculaciones": [
+    {
+      "apoderado": "apoderado.prueba@example.test",
+      "escolar": "escolar.prueba@example.test",
+      "estado": "aceptada",
+      "autorizacion_inicial": "autorizado",
+      "descripcion": "Vínculo sintético listo para el panel de escolares; incluye la autorización inicial para pedir tutorías."
+    }
   ],
   "contrato_para_otros_flujos": {
     "quien_soy": "GET /api/auth/yo  -> { id, email, nombre_uso, rol }",

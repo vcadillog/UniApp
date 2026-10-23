@@ -85,15 +85,13 @@ func nuevoPerfilCoordinador() PerfilRol {
 }
 
 func ObtenerPerfil(rol Rol, dominiosTutor string) (PerfilRol, error) {
-	switch rol {
-	case RolEscolar:
-		return nuevoPerfilEscolar(), nil
-	case RolApoderado:
-		return nuevoPerfilApoderado(), nil
-	case RolTutor:
-		return nuevoPerfilTutor(dominiosTutor), nil
-	case RolCoordinador:
-		return nuevoPerfilCoordinador(), nil
+	fabrica, err := FabricaParaRol(rol)
+	if err != nil {
+		return nil, err
 	}
-	return nil, ErrValidacion{Campos: map[string]string{"rol": "rol desconocido"}}
+	perfil := fabrica.CrearPerfil(dominiosTutor)
+	if perfil == nil {
+		return nil, ErrValidacion{Campos: map[string]string{"rol": "rol desconocido"}}
+	}
+	return perfil, nil
 }

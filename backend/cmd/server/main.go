@@ -79,8 +79,8 @@ func main() {
 	)
 	tutores := ctrlTutor.Nuevo(servicioTutor, controlador.Autenticar()).Rutas()
 
-	// Servicio del flujo D: reservas y adjuntos.
-	reservas := construirServicioReserva(baseDatos, configuracion)
+	// Servicio del flujo D: reservas y adjuntos, con la autorización vigente del flujo A.
+	reservas := construirServicioReserva(baseDatos, configuracion, servicio)
 
 	// Extensión del flujo E: sesiones y asistencias.
 	manejador := construirManejadorConSesion(
@@ -119,6 +119,9 @@ func construirServicio(ctx context.Context, registro *log.Logger, configuracion 
 		if err := modelo.Sembrar(ctx, servicio, modelo.OpcionesSiembra{DominioTutor: configuracion.DominiosTutor, Clave: configuracion.ClaveSemilla}); err != nil {
 			registro.Fatalf("semilla: %v", err)
 		}
+		if err := modelo.SembrarVinculacion(ctx, servicio, modelo.EmailApoderadoSintetico, modelo.EmailEscolarSintetico); err != nil {
+			registro.Fatalf("semilla de vinculación: %v", err)
+		}
 
 		registro.Println("cuentas sintéticas de prueba listas")
 	}
@@ -126,19 +129,21 @@ func construirServicio(ctx context.Context, registro *log.Logger, configuracion 
 	return servicio
 }
 
-// Servicio del flujo D: reserva transaccional y adjuntos en cuarentena (I09).
-func construirServicioReserva(baseDatos *sql.DB, configuracion config.Config) *modeloReserva.Servicio {
+// Servicio del flujo D: reserva transaccional y adjuntos en cuarentena (I09),
+// con la autorización vigente del flujo A inyectada como puerto.
+func construirServicioReserva(baseDatos *sql.DB, configuracion config.Config, autorizacion modeloReserva.PuertoAutorizacion) *modeloReserva.Servicio {
 	var analizador modeloReserva.Analizador = modeloReserva.AnalizadorBasico{}
 	if strings.EqualFold(configuracion.AnalisisAdjuntos, "ninguno") {
 		// Sin análisis disponible la reserva sigue funcionando: el adjunto queda en cuarentena.
 		analizador = modeloReserva.AnalizadorNoDisponible{}
 	}
 	return modeloReserva.NuevoServicio(modeloReserva.Dependencias{
-		Repositorio: modeloReserva.RepositorioPostgres{DB: baseDatos},
-		Oferta:      modeloReserva.NuevaOfertaSintetica(time.Now().UTC()),
-		Almacen:     adapters.AlmacenAdjuntosFS{Directorio: configuracion.DirectorioAdjuntos},
-		Analizador:  analizador,
-		Limites:     modeloReserva.LimitesPorDefecto,
+		Repositorio:  modeloReserva.RepositorioPostgres{DB: baseDatos},
+		Oferta:       modeloReserva.NuevaOfertaSintetica(time.Now().UTC()),
+		Almacen:      adapters.AlmacenAdjuntosFS{Directorio: configuracion.DirectorioAdjuntos},
+		Analizador:   analizador,
+		Limites:      modeloReserva.LimitesPorDefecto,
+		Autorizacion: autorizacion,
 	})
 }
 
@@ -157,11 +162,12 @@ func construirMailer(configuracion config.Config) modelo.Mailer {
 func construirBus(registro *log.Logger, mailer modelo.Mailer, configuracion config.Config) *infra.Bus {
 	bus := infra.NuevoBus()
 	auditoria := infra.NuevaAuditoria(registro)
-	for _, nombre := range []string{modelo.UsuarioRegistrado, modelo.IngresoExitoso, modelo.IngresoFallido, modelo.ClaveRestablecida, modelo.RecuperacionSolicitada, modelo.ConfirmacionSolicitada, modelo.CorreoConfirmado} {
+	for _, nombre := range []string{modelo.UsuarioRegistrado, modelo.IngresoExitoso, modelo.IngresoFallido, modelo.ClaveRestablecida, modelo.RecuperacionSolicitada, modelo.ConfirmacionSolicitada, modelo.CorreoConfirmado, modelo.VinculacionSolicitada, modelo.VinculacionAceptada} {
 		bus.Registrar(nombre, auditoria)
 	}
 	bus.Registrar(modelo.RecuperacionSolicitada, infra.NuevoCorreoRecuperacion(mailer, configuracion.OrigenFrontend))
 	bus.Registrar(modelo.ConfirmacionSolicitada, infra.NuevoCorreoConfirmacion(mailer, configuracion.OrigenFrontend))
+	bus.Registrar(modelo.VinculacionSolicitada, infra.NuevoCorreoVinculacion(mailer, configuracion.OrigenFrontend))
 	return bus
 }
 

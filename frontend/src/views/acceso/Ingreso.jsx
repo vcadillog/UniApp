@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import Campo from '../../components/Campo.jsx';
 import { ingresar } from '../../controllers/acceso/acciones.js';
 import { validarIngreso } from '../../models/acceso/validadores.js';
@@ -12,6 +12,10 @@ export default function Ingreso() {
   const [mensaje, setMensaje] = useState('');
   const [enviando, setEnviando] = useState(false);
   const navegar = useNavigate();
+  const [parametros] = useSearchParams();
+  const solicitado = parametros.get('next');
+  const esDestinoInterno = solicitado?.startsWith('/') && !solicitado.startsWith('//') && !solicitado.startsWith('/\\');
+  const destino = esDestinoInterno ? solicitado : '/';
   const cambiarCampo = (campo) => (evento) =>
     setFormulario({ ...formulario, [campo]: evento.target.value });
 
@@ -24,7 +28,7 @@ export default function Ingreso() {
     setEnviando(true);
     try {
       await ingresar(formulario.email.trim(), formulario.clave);
-      navegar('/', { replace: true });
+      navegar(destino, { replace: true });
     } catch (error) {
       setMensaje(error.message);
     } finally {
@@ -35,6 +39,7 @@ export default function Ingreso() {
   return (
     <main>
       <h1>Ingresar</h1>
+      {solicitado && <p>Inicia sesión para continuar.</p>}
       <form onSubmit={enviarFormulario} noValidate>
         <Campo etiqueta="Correo" type="email" autoComplete="username" value={formulario.email} onChange={cambiarCampo('email')} error={errores.email} />
         <Campo etiqueta="Contraseña" type="password" autoComplete="current-password" value={formulario.clave} onChange={cambiarCampo('clave')} error={errores.clave} />

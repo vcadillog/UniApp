@@ -2,7 +2,6 @@ package acceso
 
 import (
 	"encoding/json"
-	"errors"
 	"net/http"
 	"time"
 
@@ -18,10 +17,18 @@ const (
 type Controlador struct {
 	servicio     *modelo.Servicio
 	cookieSegura bool
+	errores      *MapeadorDeErrores
 }
 
 func Nuevo(servicio *modelo.Servicio, cookieSegura bool) *Controlador {
-	return &Controlador{servicio: servicio, cookieSegura: cookieSegura}
+	controlador := &Controlador{
+		servicio:     servicio,
+		cookieSegura: cookieSegura,
+		errores:      NuevoMapeadorDeErrores(),
+	}
+	registrarErroresDeCuenta(controlador.errores)
+	registrarErroresDeVinculacion(controlador.errores)
+	return controlador
 }
 
 func (c *Controlador) Rutas() http.Handler {
@@ -35,6 +42,13 @@ func (c *Controlador) Rutas() http.Handler {
 	mux.Handle("POST /api/auth/salida", Encadenar(http.HandlerFunc(c.salida), c.Autenticar()))
 	mux.Handle("GET /api/auth/yo", Encadenar(http.HandlerFunc(c.yo), c.Autenticar()))
 	mux.Handle("GET /api/coordinacion/panel", Encadenar(http.HandlerFunc(c.panelCoordinacion), c.Autenticar(), RequierePermiso(modelo.PermisoCoordinacionAcceder)))
+	mux.Handle("POST /api/apoderado/vinculaciones", Encadenar(http.HandlerFunc(c.solicitarVinculacion), c.Autenticar()))
+	mux.Handle("GET /api/apoderado/vinculaciones", Encadenar(http.HandlerFunc(c.listarVinculaciones), c.Autenticar()))
+	mux.Handle("POST /api/apoderado/escolares/{escolarID}/autorizacion", Encadenar(http.HandlerFunc(c.cambiarAutorizacion), c.Autenticar(), RequierePermiso(modelo.PermisoAutorizacionOtorgar)))
+	mux.Handle("GET /api/apoderado/escolares/{escolarID}/autorizaciones", Encadenar(http.HandlerFunc(c.historialAutorizaciones), c.Autenticar(), RequierePermiso(modelo.PermisoAutorizacionOtorgar)))
+	mux.Handle("POST /api/escolar/vinculaciones/consultar", Encadenar(http.HandlerFunc(c.consultarVinculacion), c.Autenticar()))
+	mux.Handle("POST /api/escolar/vinculaciones/aceptar", Encadenar(http.HandlerFunc(c.aceptarVinculacion), c.Autenticar()))
+	mux.Handle("GET /api/escolar/apoderado", Encadenar(http.HandlerFunc(c.miApoderado), c.Autenticar()))
 	mux.HandleFunc("GET /api/salud", c.salud)
 	return mux
 }
@@ -82,27 +96,5 @@ func (c *Controlador) decodificarCuerpo(w http.ResponseWriter, r *http.Request, 
 }
 
 func (c *Controlador) responderError(w http.ResponseWriter, err error) {
-	var errValidacion modelo.ErrValidacion
-	switch {
-	case errors.As(err, &errValidacion):
-		vista.EscribirError(w, vista.RespuestaError{
-			Estado: http.StatusUnprocessableEntity, Codigo: "validacion",
-			Mensaje: "Revisa los datos ingresados.", Campos: errValidacion.Campos,
-		})
-	case errors.Is(err, modelo.ErrEmailEnUso):
-		vista.EscribirError(w, vista.RespuestaError{
-			Estado: http.StatusConflict, Codigo: "correo_en_uso",
-			Mensaje: err.Error(), Campos: map[string]string{"email": err.Error()},
-		})
-	case errors.Is(err, modelo.ErrRolNoPermitido):
-		vista.EscribirError(w, vista.RespuestaError{Estado: http.StatusForbidden, Codigo: "rol_no_permitido", Mensaje: err.Error()})
-	case errors.Is(err, modelo.ErrCredenciales):
-		vista.EscribirError(w, vista.RespuestaError{Estado: http.StatusUnauthorized, Codigo: "credenciales", Mensaje: err.Error()})
-	case errors.Is(err, modelo.ErrDemasiadosIntentos):
-		vista.EscribirError(w, vista.RespuestaError{Estado: http.StatusTooManyRequests, Codigo: "demasiados_intentos", Mensaje: err.Error()})
-	case errors.Is(err, modelo.ErrTokenInvalido):
-		vista.EscribirError(w, vista.RespuestaError{Estado: http.StatusBadRequest, Codigo: "token_invalido", Mensaje: err.Error()})
-	default:
-		vista.EscribirError(w, vista.RespuestaError{Estado: http.StatusInternalServerError, Codigo: "error_interno", Mensaje: "Ocurrió un error inesperado."})
-	}
+	c.errores.Escribir(w, err)
 }

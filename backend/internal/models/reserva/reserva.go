@@ -118,6 +118,7 @@ var (
 	ErrCuotaCursoSemana      = errors.New("ya tienes una sesión de este curso en esa semana")
 	ErrReservaNoEncontrada   = errors.New("reserva no encontrada")
 	ErrNoAutorizado          = errors.New("no autorizado")
+	ErrSinAutorizacion       = errors.New("el escolar no tiene autorización vigente para reservar")
 	ErrAnticipacion          = errors.New("la sesión debe empezar al menos 48 horas después de este momento")
 	ErrHorizonte             = errors.New("el horario está fuera del horizonte de 28 días")
 	ErrReservaInvalida       = errors.New("reserva inválida")

@@ -14,6 +14,7 @@ export function conSesionExpirada(cliente, alExpirar) {
   return {
     get: vigilar(cliente.get),
     post: vigilar(cliente.post),
+    postFormulario: vigilar(cliente.postFormulario),
     put: vigilar(cliente.put),
     delete: vigilar(cliente.delete),
   };

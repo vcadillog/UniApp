@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import Campo from '../../components/Campo.jsx';
 import { registrar, reenviarConfirmacion } from '../../controllers/acceso/acciones.js';
-import { ROLES, ROLES_REGISTRO } from '../../models/acceso/roles.js';
+import { ROLES_REGISTRO, etiquetaRol, requiereCorreoInstitucional } from '../../models/acceso/roles.js';
 import { correosInstitucionales, validarRegistro } from '../../models/acceso/validadores.js';
 
 const DOMINIOS_INSTITUCIONALES = import.meta.env?.VITE_TUTOR_EMAIL_DOMAIN || 'uni.edu.pe,uni.pe';
@@ -76,13 +76,13 @@ export default function Registro() {
         <div className="campo">
           <label htmlFor="rol">Soy</label>
           <select id="rol" value={formulario.rol} onChange={cambiarCampo('rol')}>
-            {ROLES_REGISTRO.map((rol) => <option key={rol} value={rol}>{ROLES[rol]}</option>)}
+            {ROLES_REGISTRO.map((rol) => <option key={rol} value={rol}>{etiquetaRol(rol)}</option>)}
           </select>
         </div>
         <Campo etiqueta="Nombre de uso" autoComplete="nickname" value={formulario.nombre_uso} onChange={cambiarCampo('nombre_uso')} error={errores.nombre_uso}
           ayuda="No pedimos DNI ni dirección." />
         <Campo etiqueta="Correo" type="email" autoComplete="email" value={formulario.email} onChange={cambiarCampo('email')} error={errores.email}
-          ayuda={formulario.rol === 'tutor' ? `Correo institucional (${correosInstitucionales(DOMINIOS_INSTITUCIONALES)})` : undefined} />
+          ayuda={requiereCorreoInstitucional(formulario.rol) ? `Correo institucional (${correosInstitucionales(DOMINIOS_INSTITUCIONALES)})` : undefined} />
         <Campo etiqueta="Contraseña" type="password" autoComplete="new-password" value={formulario.clave} onChange={cambiarCampo('clave')} error={errores.clave} />
         <Campo etiqueta="Repite la contraseña" type="password" autoComplete="new-password" value={formulario.confirmar} onChange={cambiarCampo('confirmar')} error={errores.confirmar} />
         {mensaje && <p className="error" role="alert">{mensaje}</p>}

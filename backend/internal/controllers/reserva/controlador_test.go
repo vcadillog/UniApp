@@ -62,11 +62,28 @@ type entorno struct {
 	coordinador *http.Cookie
 }
 
+type autorizacionFija bool
+
+func (a autorizacionFija) AutorizacionVigente(context.Context, string) (bool, error) {
+	return bool(a), nil
+}
+
+type autorizacionVariable struct{ permitido bool }
+
+func (a *autorizacionVariable) AutorizacionVigente(context.Context, string) (bool, error) {
+	return a.permitido, nil
+}
+
 func nuevoEntorno(t *testing.T) *entorno {
 	return nuevoEntornoCon(t, modelo.AnalizadorBasico{})
 }
 
 func nuevoEntornoCon(t *testing.T, analizador modelo.Analizador) *entorno {
+	t.Helper()
+	return nuevoEntornoConAutorizacion(t, autorizacionFija(true), analizador)
+}
+
+func nuevoEntornoConAutorizacion(t *testing.T, autorizacion modelo.PuertoAutorizacion, analizador modelo.Analizador) *entorno {
 	t.Helper()
 	hasher := infra.PBKDF2Hasher{Iteraciones: 1000}
 	servicioAcceso := modeloAcceso.NuevoServicio(modeloAcceso.Dependencias{
@@ -83,10 +100,11 @@ func nuevoEntornoCon(t *testing.T, analizador modelo.Analizador) *entorno {
 	ahora := time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
 	almacen := &almacenPrueba{archivos: map[string][]byte{}}
 	servicioReserva := modelo.NuevoServicio(modelo.Dependencias{
-		Repositorio: modelo.NuevoRepositorioMemoria(),
-		Oferta:      modelo.NuevaOfertaSintetica(ahora),
-		Almacen:     almacen,
-		Analizador:  analizador,
+		Repositorio:  modelo.NuevoRepositorioMemoria(),
+		Oferta:       modelo.NuevaOfertaSintetica(ahora),
+		Autorizacion: autorizacion,
+		Almacen:      almacen,
+		Analizador:   analizador,
 	})
 	servicioReserva.FijarReloj(func() time.Time { return ahora })
 
@@ -220,6 +238,28 @@ func TestReservaBaseDeExtremoAExtremo(t *testing.T) {
 	consultada := llamar(entorno.manejador, "GET", "/api/reserva/"+reserva["id"].(string), "", entorno.escolar)
 	if consultada.Code != http.StatusOK {
 		t.Fatalf("consultar: %d %s", consultada.Code, consultada.Body)
+	}
+}
+
+func TestRevocarAutorizacionNoAfectaReservasConfirmadas(t *testing.T) {
+	autorizacion := &autorizacionVariable{permitido: true}
+	entorno := nuevoEntornoConAutorizacion(t, autorizacion, modelo.AnalizadorBasico{})
+
+	creada := llamar(entorno.manejador, "POST", "/api/reserva", cuerpoOK, entorno.escolar)
+	if creada.Code != http.StatusCreated {
+		t.Fatalf("reserva inicial: %d %s", creada.Code, creada.Body)
+	}
+	id := decodificar(t, creada)["id"].(string)
+
+	autorizacion.permitido = false
+	nueva := llamar(entorno.manejador, "POST", "/api/reserva", cuerpoOK, entorno.escolar)
+	if nueva.Code != http.StatusForbidden || decodificar(t, nueva)["codigo"] != "sin_autorizacion" {
+		t.Fatalf("sin autorización no se reserva: %d %s", nueva.Code, nueva.Body)
+	}
+
+	existente := llamar(entorno.manejador, "GET", "/api/reserva/"+id, "", entorno.escolar)
+	if existente.Code != http.StatusOK {
+		t.Fatalf("la reserva ya confirmada sigue vigente: %d %s", existente.Code, existente.Body)
 	}
 }
 

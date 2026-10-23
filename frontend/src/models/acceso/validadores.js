@@ -1,3 +1,5 @@
+import { politicaDeRol, requiereCorreoInstitucional } from './roles.js';
+
 const MINIMO_BASICA = 10;
 const MINIMO_ESTRICTA = 12;
 const CORREO_VALIDO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -18,8 +20,12 @@ export const politicaEstricta = (minimo = MINIMO_ESTRICTA) => (clave, email = ''
   return observaciones;
 };
 
-export const crearPolitica = (rol) =>
-  rol === 'tutor' || rol === 'coordinador' ? politicaEstricta(MINIMO_ESTRICTA) : politicaBasica(MINIMO_BASICA);
+const POLITICAS = {
+  basica: () => politicaBasica(MINIMO_BASICA),
+  estricta: () => politicaEstricta(MINIMO_ESTRICTA),
+};
+
+export const crearPolitica = (rol) => (POLITICAS[politicaDeRol(rol)] ?? POLITICAS.basica)();
 
 export function dominiosDe(dominios) {
   return String(dominios ?? '')
@@ -47,7 +53,7 @@ export function validarRegistro(datos, dominiosTutor = DOMINIOS_INSTITUCIONALES)
   const problemaCorreo = validarCorreo(email);
   if (problemaCorreo) {
     errores.email = problemaCorreo;
-  } else if (datos.rol === 'tutor' && !esCorreoInstitucional(email, dominiosTutor)) {
+  } else if (requiereCorreoInstitucional(datos.rol) && !esCorreoInstitucional(email, dominiosTutor)) {
     errores.email = `Los tutores usan su correo institucional (${correosInstitucionales(dominiosTutor)})`;
   }
   const longitud = [...(datos.nombre_uso || '').trim()].length;

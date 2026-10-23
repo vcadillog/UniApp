@@ -1,11 +1,11 @@
 openapi: 3.0.3
 info:
-  title: UniApp · Flujo A (Acceso) · I01
-  version: 0.1.0
-  description: Contrato de cuentas, sesión y roles. Los demás flujos lo consumen vía API (nunca por tablas).
+  title: UniApp · Flujo A (Acceso) · I01/I06
+  version: 0.3.0
+  description: Contrato de cuentas, sesión, vinculación y autorización de nuevas reservas. Los demás flujos lo consumen vía API (nunca por tablas).
 servers: [{ url: http://localhost:8080 }]
 tags:
-  - { name: A-acceso, description: "Flujo A · Víctor · implementado en I01" }
+  - { name: A-acceso, description: "Flujo A · Víctor · implementado en I01 e I06" }
   - { name: B-tutor, description: "Flujo B · expediente y revisión mínima (I02)" }
   - { name: C-oferta, description: "Flujo C · Mateo · esqueleto (I03)" }
   - { name: D-reserva, description: "Flujo D · Jhon · esqueleto (I04)" }
@@ -22,6 +22,33 @@ components:
         nombre_uso: { type: string }
         rol: { type: string, enum: [escolar, apoderado, tutor, coordinador] }
         correo_confirmado: { type: boolean, description: "false hasta que se usa el enlace de confirmación" }
+    UsuarioResumen:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string }
+        nombre_uso: { type: string }
+        rol: { type: string, enum: [escolar, apoderado] }
+    Vinculacion:
+      type: object
+      description: Relación entre un apoderado y un escolar. Una vez aceptada es inmutable.
+      properties:
+        id: { type: string, format: uuid }
+        estado: { type: string, enum: [pendiente, aceptada] }
+        apoderado: { $ref: '#/components/schemas/UsuarioResumen' }
+        escolar: { $ref: '#/components/schemas/UsuarioResumen' }
+        autorizacion: { $ref: '#/components/schemas/Autorizacion' }
+        creada_en: { type: string, format: date-time }
+        aceptada_en: { type: string, format: date-time, nullable: true }
+        expira_en: { type: string, format: date-time, description: "Vigencia del enlace de aceptación (24 h)" }
+    Autorizacion:
+      type: object
+      description: Registro de un cambio de permiso del apoderado para crear nuevas reservas.
+      properties:
+        id: { type: string, format: uuid }
+        estado: { type: string, enum: [autorizado, no_autorizado] }
+        autorizado: { type: boolean }
+        creada_en: { type: string, format: date-time, description: "Fecha y hora del cambio" }
     Error:
       type: object
       properties:
@@ -172,6 +199,114 @@ paths:
         required: true
         content: { application/json: { schema: { type: object, required: [email], properties: { email: { type: string } } } } }
       responses: { '202': { description: Aceptado } }
+  /api/apoderado/vinculaciones:
+    post:
+      tags: [A-acceso]
+      summary: Solicita vincular a un escolar (solo apoderado)
+      description: >
+        El apoderado ingresa el correo de un escolar activo y confirmado. Se envía
+        un enlace de un solo uso al correo del escolar, válido por 24 horas. Un
+        apoderado puede tener varios escolares; un escolar solo puede tener un
+        apoderado aceptado.
+      security: [{ sesion: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [email_escolar], properties: { email_escolar: { type: string, format: email } } } } }
+      responses:
+        '202': { description: Solicitud creada y enlace enviado, content: { application/json: { schema: { type: object, properties: { mensaje: { type: string }, vinculacion: { $ref: '#/components/schemas/Vinculacion' } } } } } }
+        '401': { description: Sin sesión }
+        '403': { description: El usuario no es apoderado }
+        '404': { description: No existe un escolar con ese correo }
+        '409': { description: El escolar ya tiene apoderado o una solicitud pendiente }
+        '422': { description: Datos inválidos o el destino no es un escolar activo y confirmado }
+    get:
+      tags: [A-acceso]
+      summary: Lista los escolares de un apoderado
+      security: [{ sesion: [] }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { vinculaciones: { type: array, items: { $ref: '#/components/schemas/Vinculacion' } } } } } } }
+        '401': { description: Sin sesión }
+        '403': { description: El usuario no es apoderado }
+  /api/apoderado/escolares/{escolarID}/autorizacion:
+    post:
+      tags: [A-acceso]
+      summary: Autoriza o revoca la creación de nuevas reservas (solo apoderado)
+      description: >
+        Registra un cambio de estado con fecha y hora. El estado vigente es el
+        último registrado. No modifica reservas ya confirmadas: solo se comprueba
+        al intentar crear una reserva nueva. El escolar debe ser el vinculado al
+        apoderado autenticado.
+      security: [{ sesion: [] }]
+      parameters:
+        - { name: escolarID, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [autorizado]
+              properties:
+                autorizado: { type: boolean }
+      responses:
+        '200': { description: Estado actualizado, content: { application/json: { schema: { type: object, properties: { mensaje: { type: string }, autorizacion: { $ref: '#/components/schemas/Autorizacion' } } } } } }
+        '401': { description: Sin sesión }
+        '403': { description: El usuario no es apoderado o no es el apoderado del escolar }
+        '409': { description: El escolar no tiene un apoderado vinculado }
+        '422': { description: Falta el campo autorizado }
+  /api/apoderado/escolares/{escolarID}/autorizaciones:
+    get:
+      tags: [A-acceso]
+      summary: Consulta el historial de autorizaciones de un escolar (solo apoderado)
+      description: >
+        Devuelve cada vez que se otorgó o retiró el permiso para crear nuevas
+        reservas, del cambio más reciente al más antiguo. Incluye la autorización
+        inicial registrada al aceptar la vinculación. El escolar debe pertenecer
+        al apoderado autenticado.
+      security: [{ sesion: [] }]
+      parameters:
+        - { name: escolarID, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Historial de cambios, del más reciente al más antiguo, content: { application/json: { schema: { type: object, properties: { autorizaciones: { type: array, items: { $ref: '#/components/schemas/Autorizacion' } } } } } } }
+        '401': { description: Sin sesión }
+        '403': { description: El usuario no es apoderado o no es el apoderado del escolar }
+        '409': { description: El escolar no tiene un apoderado vinculado }
+  /api/escolar/vinculaciones/consultar:
+    post:
+      tags: [A-acceso]
+      summary: Consulta una solicitud pendiente sin aceptarla
+      security: [{ sesion: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [token], properties: { token: { type: string } } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { vinculacion: { $ref: '#/components/schemas/Vinculacion' } } } } } }
+        '400': { description: Enlace inválido o vencido }
+        '401': { description: Sin sesión }
+        '403': { description: El usuario no es escolar }
+  /api/escolar/vinculaciones/aceptar:
+    post:
+      tags: [A-acceso]
+      summary: Acepta la vinculación con el token del enlace (un solo uso, 24 h)
+      security: [{ sesion: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [token], properties: { token: { type: string } } } } }
+      responses:
+        '200': { description: Vinculación aceptada; la relación no se puede desvincular, content: { application/json: { schema: { type: object, properties: { mensaje: { type: string }, vinculacion: { $ref: '#/components/schemas/Vinculacion' } } } } } }
+        '400': { description: Enlace inválido, vencido o ya usado }
+        '401': { description: Sin sesión }
+        '403': { description: El usuario no es escolar }
+        '409': { description: El escolar ya tiene un apoderado aceptado }
+  /api/escolar/apoderado:
+    get:
+      tags: [A-acceso]
+      summary: Consulta el apoderado aceptado del escolar
+      security: [{ sesion: [] }]
+      responses:
+        '200': { description: OK; vinculacion es null si no hay apoderado, content: { application/json: { schema: { type: object, properties: { vinculacion: { allOf: [{ $ref: '#/components/schemas/Vinculacion' }], nullable: true } } } } } }
+        '401': { description: Sin sesión }
+        '403': { description: El usuario no es escolar }
   /api/coordinacion/panel:
     get:
       security: [{ sesion: [] }]
@@ -342,7 +477,7 @@ paths:
               schema: { $ref: '#/components/schemas/ReservaD' }
         '400': { description: Cuerpo inválido }
         '401': { description: Sin sesión }
-        '403': { description: La cuenta no es de escolar }
+        '403': { description: "La cuenta no es de escolar o el apoderado no tiene una autorización vigente (código sin_autorizacion)" }
         '404': { description: El horario no existe }
         '409': { description: "Conflictos (códigos: slot_ocupado, slot_vencido, solapamiento, cuota_escolar, cuota_curso_semana, idempotencia_conflicto)" }
         '422': { description: "Validación (códigos: validacion, anticipacion_insuficiente, horizonte_excedido)" }

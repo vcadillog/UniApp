@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"strings"
 	"time"
 
 	modeloAcceso "uniapp/internal/models/acceso"
@@ -13,20 +14,27 @@ import (
 // Servicio aplica las reglas del flujo D. El reloj es inyectable para probar las 48 horas
 // sin esperar: el servidor es la autoridad temporal (RN-03).
 type Servicio struct {
-	repositorio Repositorio
-	oferta      PuertoOferta
-	almacen     Almacen
-	analizador  Analizador
-	limites     Limites
-	ahora       func() time.Time
+	repositorio  Repositorio
+	oferta       PuertoOferta
+	autorizacion PuertoAutorizacion
+	almacen      Almacen
+	analizador   Analizador
+	limites      Limites
+	ahora        func() time.Time
+}
+
+// PuertoAutorizacion consulta el flujo A sin escribir en sus tablas.
+type PuertoAutorizacion interface {
+	AutorizacionVigente(ctx context.Context, escolarID string) (bool, error)
 }
 
 type Dependencias struct {
-	Repositorio Repositorio
-	Oferta      PuertoOferta
-	Almacen     Almacen
-	Analizador  Analizador
-	Limites     Limites
+	Repositorio  Repositorio
+	Oferta       PuertoOferta
+	Autorizacion PuertoAutorizacion
+	Almacen      Almacen
+	Analizador   Analizador
+	Limites      Limites
 }
 
 func NuevoServicio(dependencias Dependencias) *Servicio {
@@ -38,14 +46,27 @@ func NuevoServicio(dependencias Dependencias) *Servicio {
 	if analizador == nil {
 		analizador = AnalizadorNoDisponible{}
 	}
-	return &Servicio{
-		repositorio: dependencias.Repositorio,
-		oferta:      dependencias.Oferta,
-		almacen:     dependencias.Almacen,
-		analizador:  analizador,
-		limites:     limites,
-		ahora:       func() time.Time { return time.Now().UTC() },
+	autorizacion := dependencias.Autorizacion
+	if autorizacion == nil {
+		// Sin un puerto inyectado no se puede demostrar autorización: se falla
+		// cerrado. El composition root siempre inyecta el flujo A.
+		autorizacion = autorizacionNula{}
 	}
+	return &Servicio{
+		repositorio:  dependencias.Repositorio,
+		oferta:       dependencias.Oferta,
+		autorizacion: autorizacion,
+		almacen:      dependencias.Almacen,
+		analizador:   analizador,
+		limites:      limites,
+		ahora:        func() time.Time { return time.Now().UTC() },
+	}
+}
+
+type autorizacionNula struct{}
+
+func (autorizacionNula) AutorizacionVigente(context.Context, string) (bool, error) {
+	return false, nil
 }
 
 func (s *Servicio) FijarReloj(f func() time.Time) { s.ahora = f }
@@ -80,6 +101,18 @@ func (s *Servicio) Slots(ctx context.Context) ([]Disposicion, error) {
 // Reservar devuelve creada=false cuando la clave de idempotencia repite una reserva ya
 // existente con los mismos datos (reintento seguro del formulario).
 func (s *Servicio) Reservar(ctx context.Context, escolarID string, datos DatosReserva) (*Reserva, bool, error) {
+	if strings.TrimSpace(escolarID) == "" {
+		return nil, false, ErrNoAutorizado
+	}
+	// La autorización se comprueba solo al crear: las reservas ya confirmadas
+	// siguen vigentes aunque el apoderado revoque el permiso después.
+	autorizado, err := s.autorizacion.AutorizacionVigente(ctx, escolarID)
+	if err != nil {
+		return nil, false, err
+	}
+	if !autorizado {
+		return nil, false, ErrSinAutorizacion
+	}
 	slot, err := s.slotElegido(ctx, datos.SlotID)
 	if err != nil {
 		return nil, false, err

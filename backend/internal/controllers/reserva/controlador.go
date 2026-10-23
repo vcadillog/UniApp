@@ -23,10 +23,13 @@ const limiteCuerpoAdjunto = modelo.AdjuntoMaximoBytes + (1 << 20)
 type Controlador struct {
 	servicio   *modelo.Servicio
 	autenticar func(http.Handler) http.Handler
+	errores    *ctrlAcceso.MapeadorDeErrores
 }
 
 func Nuevo(servicio *modelo.Servicio, autenticar func(http.Handler) http.Handler) *Controlador {
-	return &Controlador{servicio: servicio, autenticar: autenticar}
+	errores := ctrlAcceso.NuevoMapeadorDeErrores()
+	registrarErroresDeReserva(errores)
+	return &Controlador{servicio: servicio, autenticar: autenticar, errores: errores}
 }
 
 func (c *Controlador) Rutas() http.Handler {
@@ -225,89 +228,5 @@ func decodificarCuerpo(w http.ResponseWriter, r *http.Request, destino any) bool
 }
 
 func (c *Controlador) responderError(w http.ResponseWriter, err error) {
-	var errValidacion modelo.ErrValidacion
-	switch {
-	case errors.As(err, &errValidacion):
-		vistaAcceso.EscribirError(w, vistaAcceso.RespuestaError{
-			Estado: http.StatusUnprocessableEntity, Codigo: "validacion",
-			Mensaje: "Revisa los datos de la reserva.", Campos: errValidacion.Campos,
-		})
-	case errors.Is(err, modelo.ErrAnticipacion):
-		vistaAcceso.EscribirError(w, vistaAcceso.RespuestaError{
-			Estado: http.StatusUnprocessableEntity, Codigo: "anticipacion_insuficiente",
-			Mensaje: err.Error(), Campos: map[string]string{"slot_id": err.Error()},
-		})
-	case errors.Is(err, modelo.ErrHorizonte):
-		vistaAcceso.EscribirError(w, vistaAcceso.RespuestaError{
-			Estado: http.StatusUnprocessableEntity, Codigo: "horizonte_excedido",
-			Mensaje: err.Error(), Campos: map[string]string{"slot_id": err.Error()},
-		})
-	case errors.Is(err, modelo.ErrSlotInexistente):
-		vistaAcceso.EscribirError(w, vistaAcceso.RespuestaError{
-			Estado: http.StatusNotFound, Codigo: "slot_inexistente", Mensaje: err.Error(),
-		})
-	case errors.Is(err, modelo.ErrSlotVencido):
-		vistaAcceso.EscribirError(w, vistaAcceso.RespuestaError{
-			Estado: http.StatusConflict, Codigo: "slot_vencido", Mensaje: err.Error(),
-		})
-	case errors.Is(err, modelo.ErrSlotOcupado):
-		vistaAcceso.EscribirError(w, vistaAcceso.RespuestaError{
-			Estado: http.StatusConflict, Codigo: "slot_ocupado", Mensaje: err.Error(),
-			Campos: map[string]string{"slot_id": err.Error()},
-		})
-	case errors.Is(err, modelo.ErrSolapamiento):
-		vistaAcceso.EscribirError(w, vistaAcceso.RespuestaError{
-			Estado: http.StatusConflict, Codigo: "solapamiento", Mensaje: err.Error(),
-		})
-	case errors.Is(err, modelo.ErrCuotaEscolar):
-		vistaAcceso.EscribirError(w, vistaAcceso.RespuestaError{
-			Estado: http.StatusConflict, Codigo: "cuota_escolar", Mensaje: err.Error(),
-		})
-	case errors.Is(err, modelo.ErrCuotaCursoSemana):
-		vistaAcceso.EscribirError(w, vistaAcceso.RespuestaError{
-			Estado: http.StatusConflict, Codigo: "cuota_curso_semana", Mensaje: err.Error(),
-		})
-	case errors.Is(err, modelo.ErrIdempotenciaConflicto):
-		vistaAcceso.EscribirError(w, vistaAcceso.RespuestaError{
-			Estado: http.StatusConflict, Codigo: "idempotencia_conflicto", Mensaje: err.Error(),
-		})
-	case errors.Is(err, modelo.ErrReservaNoEncontrada):
-		vistaAcceso.EscribirError(w, vistaAcceso.RespuestaError{
-			Estado: http.StatusNotFound, Codigo: "reserva_inexistente", Mensaje: err.Error(),
-		})
-	case errors.Is(err, modelo.ErrAdjuntoNoEncontrado):
-		vistaAcceso.EscribirError(w, vistaAcceso.RespuestaError{
-			Estado: http.StatusNotFound, Codigo: "adjunto_inexistente", Mensaje: err.Error(),
-		})
-	case errors.Is(err, modelo.ErrAdjuntosLlenos):
-		vistaAcceso.EscribirError(w, vistaAcceso.RespuestaError{
-			Estado: http.StatusConflict, Codigo: "adjuntos_llenos", Mensaje: err.Error(),
-		})
-	case errors.Is(err, modelo.ErrAdjuntoEnCuarentena):
-		vistaAcceso.EscribirError(w, vistaAcceso.RespuestaError{
-			Estado: http.StatusConflict, Codigo: "adjunto_en_cuarentena", Mensaje: err.Error(),
-		})
-	case errors.Is(err, modelo.ErrAdjuntoRechazado):
-		vistaAcceso.EscribirError(w, vistaAcceso.RespuestaError{
-			Estado: http.StatusConflict, Codigo: "adjunto_rechazado", Mensaje: err.Error(),
-		})
-	case errors.Is(err, modelo.ErrAdjuntoInvalido):
-		vistaAcceso.EscribirError(w, vistaAcceso.RespuestaError{
-			Estado: http.StatusUnprocessableEntity, Codigo: "adjunto_invalido",
-			Mensaje: "El archivo no cumple el formato permitido (PDF, PNG, JPG, TXT o DOCX de hasta 10 MB).",
-		})
-	case errors.Is(err, modelo.ErrAlmacen):
-		vistaAcceso.EscribirError(w, vistaAcceso.RespuestaError{
-			Estado: http.StatusInternalServerError, Codigo: "almacen",
-			Mensaje: "No se pudo guardar el adjunto. Intenta de nuevo.",
-		})
-	case errors.Is(err, modelo.ErrNoAutorizado):
-		vistaAcceso.EscribirError(w, vistaAcceso.RespuestaError{
-			Estado: http.StatusForbidden, Codigo: "no_autorizado", Mensaje: "No puedes acceder a esta reserva.",
-		})
-	default:
-		vistaAcceso.EscribirError(w, vistaAcceso.RespuestaError{
-			Estado: http.StatusInternalServerError, Codigo: "error_interno", Mensaje: "Ocurrió un error inesperado.",
-		})
-	}
+	c.errores.Escribir(w, err)
 }

@@ -29,4 +29,15 @@ type Repositorio interface {
 	ConsumirTokenConfirmacion(ctx context.Context, hash []byte, ahora time.Time) (string, error)
 
 	EliminarUsuariosSinConfirmar(ctx context.Context, ahora time.Time) (int64, error)
+
+	GuardarSolicitudVinculacion(ctx context.Context, v Vinculacion) (*Vinculacion, error)
+	SolicitudPendienteDeEscolar(ctx context.Context, escolarID string, ahora time.Time) (*Vinculacion, error)
+	SolicitudVinculacionPorToken(ctx context.Context, tokenHash []byte, escolarID string, ahora time.Time) (*Vinculacion, error)
+	VinculacionAceptadaDeEscolar(ctx context.Context, escolarID string) (*Vinculacion, error)
+	ConsumirSolicitudVinculacion(ctx context.Context, tokenHash []byte, escolarID string, ahora time.Time) (*Vinculacion, error)
+	VinculacionesDeApoderado(ctx context.Context, apoderadoID string, ahora time.Time) ([]Vinculacion, error)
+
+	AutorizacionVigenteDeEscolar(ctx context.Context, escolarID string) (*Autorizacion, error)
+	AutorizacionesDeVinculacion(ctx context.Context, vinculacionID string) ([]Autorizacion, error)
+	CambiarAutorizacion(ctx context.Context, vinculacionID, escolarID, apoderadoID string, estado EstadoAutorizacion, ahora time.Time) (*Autorizacion, error)
 }

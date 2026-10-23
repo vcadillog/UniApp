@@ -8,6 +8,8 @@ const (
 	ClaveRestablecida      = "clave.restablecida"
 	ConfirmacionSolicitada = "correo.confirmacion_solicitada"
 	CorreoConfirmado       = "correo.confirmado"
+	VinculacionSolicitada  = "vinculacion.solicitada"
+	VinculacionAceptada    = "vinculacion.aceptada"
 )
 
 type Event struct {

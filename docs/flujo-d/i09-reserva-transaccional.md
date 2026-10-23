@@ -1,7 +1,7 @@
 # I09 · Reserva transaccional y adjuntos protegidos (flujo D)
 
 **Estado:** implementado en la rama `feature/reserva-i09`; pendiente de revisión.
-**Requisitos:** RF-10, RF-11, RF-13 · **Reglas:** RN-03, RN-04, RN-05, RN-07, D05, D06, D07, RN-16, RN-17 · **Depende de:** I04 (integrada), I06 e I08 (aún no publicadas).
+**Requisitos:** RF-10, RF-11, RF-13 · **Reglas:** RN-03, RN-04, RN-05, RN-07, D05, D06, D07, RN-16, RN-17 · **Depende de:** I04 (integrada), I06 (integrada), I08 (aún no publicada).
 
 ## Alcance de la entrega
 

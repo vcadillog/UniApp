@@ -70,16 +70,42 @@ func (a *almacenMemoria) Eliminar(_ context.Context, clave string) error {
 	return nil
 }
 
+type autorizacionFija bool
+
+func (a autorizacionFija) AutorizacionVigente(context.Context, string) (bool, error) {
+	return bool(a), nil
+}
+
 func servicioDePrueba(slots ...Slot) (*Servicio, *almacenMemoria) {
 	almacen := nuevoAlmacen()
 	servicio := NuevoServicio(Dependencias{
-		Repositorio: NuevoRepositorioMemoria(),
-		Oferta:      ofertaFija{slots: slots},
-		Almacen:     almacen,
-		Analizador:  AnalizadorBasico{},
+		Repositorio:  NuevoRepositorioMemoria(),
+		Oferta:       ofertaFija{slots: slots},
+		Autorizacion: autorizacionFija(true),
+		Almacen:      almacen,
+		Analizador:   AnalizadorBasico{},
 	})
 	servicio.FijarReloj(func() time.Time { return ahora })
 	return servicio, almacen
+}
+
+func TestReservarSoloConAutorizacionVigente(t *testing.T) {
+	servicio := NuevoServicio(Dependencias{
+		Repositorio:  NuevoRepositorioMemoria(),
+		Oferta:       NuevaOfertaSintetica(ahora),
+		Autorizacion: autorizacionFija(false),
+	})
+	servicio.FijarReloj(func() time.Time { return ahora })
+	if _, _, err := servicio.Reservar(context.Background(), "escolar-1", datosValidos()); !errors.Is(err, ErrSinAutorizacion) {
+		t.Fatalf("sin autorización no se reserva: %v", err)
+	}
+}
+
+func TestReservarSinEscolarAutenticado(t *testing.T) {
+	servicio, _ := servicioDePrueba(slotEn("slot-1", ahora.Add(72*time.Hour)))
+	if _, _, err := servicio.Reservar(context.Background(), "  ", datosValidos()); !errors.Is(err, ErrNoAutorizado) {
+		t.Fatalf("sin escolar autenticado no hay reserva: %v", err)
+	}
 }
 
 func TestAnticipacionExactaDe48Horas(t *testing.T) {
@@ -273,10 +299,11 @@ func TestAdjuntarYDescargar(t *testing.T) {
 func TestAdjuntoQuedaEnCuarentenaSinAnalisis(t *testing.T) {
 	almacen := nuevoAlmacen()
 	servicio := NuevoServicio(Dependencias{
-		Repositorio: NuevoRepositorioMemoria(),
-		Oferta:      ofertaFija{slots: []Slot{slotEn("slot-1", ahora.Add(72*time.Hour))}},
-		Almacen:     almacen,
-		Analizador:  AnalizadorNoDisponible{},
+		Repositorio:  NuevoRepositorioMemoria(),
+		Oferta:       ofertaFija{slots: []Slot{slotEn("slot-1", ahora.Add(72*time.Hour))}},
+		Autorizacion: autorizacionFija(true),
+		Almacen:      almacen,
+		Analizador:   AnalizadorNoDisponible{},
 	})
 	servicio.FijarReloj(func() time.Time { return ahora })
 	ctx := context.Background()
